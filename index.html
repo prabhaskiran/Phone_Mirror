@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>USB Screen Mirror</title>
-    <!-- Fully compiled minified build distribution library -->
-    <script src="https://cdn.jsdelivr.net/npm/webadb@1.0.1/webadb.min.js"></script>
+    <script src="https://jsdelivr.net"></script>
     <style>
         body {
             margin: 0;
@@ -39,7 +38,7 @@
             border-radius: 12px;
             display: none;
         }
-        .status { color: #aaa; margin-top: 10px; font-size: 14px; }
+        .status { color: #aaa; margin-top: 10px; font-size: 14px; max-width: 400px; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -62,31 +61,45 @@
         let webusb;
         let adb;
 
+        // Custom function to forcefully attempt connection handles up to 5 times
+        async function robustConnect(maxRetries = 5) {
+            for (let i = 1; i <= maxRetries; i++) {
+                try {
+                    statusText.innerText = `Status: Claiming device interface (Attempt ${i}/${maxRetries})...`;
+                    webusb = await window.Adb.open("WebUSB");
+                    adb = await webusb.connectAdb("host::");
+                    return true; // Connection successful!
+                } catch (err) {
+                    console.warn(`Attempt ${i} failed:`, err.message);
+                    if (i === maxRetries) throw err;
+                    // Wait 1.5 seconds before trying to intercept the pipe again
+                    await new Promise(r => setTimeout(r, 1500));
+                }
+            }
+            return false;
+        }
+
         connectBtn.addEventListener('click', async () => {
             if (streaming) return;
 
-            // Failsafe validator mapping for compilation architecture
             if (typeof window.Adb === 'undefined') {
-                statusText.innerText = "Error: System engine failure. Make sure you are using Chrome or Edge.";
+                statusText.innerText = "Error: System engine failure. Use Chrome or Edge.";
                 return;
             }
 
             try {
-                statusText.innerText = "Status: Spawning WebUSB Interface Connection...";
+                // Step 1: Open the hardware window picker
+                statusText.innerText = "Status: Please select your device in the browser window popup...";
                 
-                // Open native WebUSB controller mapping
-                webusb = await window.Adb.open("WebUSB");
-                
-                statusText.innerText = "Status: Authenticating ADB Host Connection...";
-                // Connect with parameters required by WebUSB protocol
-                adb = await webusb.connectAdb("host::");
+                // Step 2: Fire the robust loop system to bypass system driver locking
+                await robustConnect(5);
 
-                statusText.innerText = "Status: Mirroring active! Check your phone for authorization.";
+                statusText.innerText = "Status: Connecting success! Mirroring active.";
                 canvas.style.display = 'block';
                 streaming = true;
                 connectBtn.style.display = 'none';
 
-                // Hardware level extraction routine loop
+                // Stream frame acquisition loop
                 while (streaming) {
                     let shell = await adb.shell("screencap -p");
                     let output = await shell.receive();
@@ -100,14 +113,12 @@
                         ctx.drawImage(bitmap, 0, 0);
                         bitmap.close(); 
                     }
-                    
-                    // Throttled refresh layout to prevent phone hardware exhaustion
                     await new Promise(r => setTimeout(r, 60)); 
                 }
 
             } catch (err) {
                 console.error(err);
-                statusText.innerText = "Error: " + err.message + ". Check connection and close native ADB apps.";
+                statusText.innerText = "Error: System blocked by OS. Fix: Unplug the cable, flip your phone's USB connection mode setting to 'MIDI' or 'PTP', and plug it back in.";
             }
         });
     </script>
