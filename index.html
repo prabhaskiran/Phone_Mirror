@@ -4,9 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>USB Screen Mirror</title>
-    <!-- Include the essential WebUSB / WebADB components -->
-    <script src="https://unpkg.com"></script>
-    <script src="https://unpkg.com"></script>
+    <!-- Importing modern ES modules for the ADB interface -->
+    <script type="module">
+        import { Adb } from 'https://jsdelivr.net';
+        import { AdbWebUsbBackend } from 'https://jsdelivr.net';
+        
+        // Attach them directly to the window so our main button logic can see them
+        window.Adb = Adb;
+        window.AdbWebUsbBackend = AdbWebUsbBackend;
+    </script>
     <style>
         body {
             margin: 0;
@@ -52,7 +58,6 @@
         <div class="status" id="status-text">Status: Disconnected</div>
     </div>
 
-    <!-- The container where your phone screen canvas will draw -->
     <canvas id="mirror-canvas"></canvas>
 
     <script>
@@ -65,63 +70,60 @@
         connectBtn.addEventListener('click', async () => {
             if (streaming) return;
 
+            // Simple fail-safe to let modules finish loading
+            if (!window.AdbWebUsbBackend || !window.Adb) {
+                statusText.innerText = "Status: Initializing scripts... Click again in 2 seconds.";
+                return;
+            }
+
             try {
-                statusText.innerText = "Status: Requesting USB access...";
+                statusText.innerText = "Status: Requesting USB device access...";
                 
-                // 1. Request access to the USB device from the browser
-                const device = await window.AdbBackendWebUsb.AdbWebUsbBackend.requestDevice();
+                // 1. Prompt browser to request the USB device interface
+                const device = await window.AdbWebUsbBackend.requestDevice();
                 if (!device) {
                     statusText.innerText = "Status: No device selected.";
                     return;
                 }
 
-                statusText.innerText = "Status: Connecting to ADB protocol...";
-                const backend = new window.AdbBackendWebUsb.AdbWebUsbBackend(device);
-                const adb = await window.Adb.Adb.authenticate(backend, {
-                    // Generates the cryptographic key pair required to authenticate with Android ADB
-                    generateKeyPair: () => {
-                        return window.Adb.Adb.generateKeyPair();
-                    }
+                statusText.innerText = "Status: Authenticating ADB key protocol...";
+                const backend = new window.AdbWebUsbBackend(device);
+                const adb = await window.Adb.authenticate(backend, {
+                    generateKeyPair: () => window.Adb.generateKeyPair()
                 });
 
-                statusText.innerText = "Status: Mirroring started! Check your phone to allow access.";
+                statusText.innerText = "Status: Mirroring active! Accept prompts on your phone.";
                 canvas.style.display = 'block';
                 streaming = true;
                 connectBtn.style.display = 'none';
 
-                // 2. Loop frame requests via native ADB shell screencap commands
-                // This fetches raw frame buffers directly through the physical USB pipe.
+                // 2. Continual screenshot frame extraction loop
                 while (streaming) {
                     const output = await adb.subprocess.spawn('exec-out screencap -p');
                     let chunks = [];
-                    
-                    // Read the incoming binary stream of the screenshot
                     const reader = output.stdout.getReader();
+                    
                     while (true) {
                         const { value, done } = await reader.read();
                         if (value) chunks.push(value);
                         if (done) break;
                     }
 
-                    // Convert raw binary chunks to a viewable browser image blob
                     const blob = new Blob(chunks, { type: 'image/png' });
                     const bitmap = await createImageBitmap(blob);
                     
-                    // Resize canvas to match phone aspect ratio dynamically
                     canvas.width = bitmap.width;
                     canvas.height = bitmap.height;
-                    
-                    // Draw frame on canvas
                     ctx.drawImage(bitmap, 0, 0);
-                    bitmap.close(); // Clean up memory leak
+                    bitmap.close(); 
                     
-                    // Short brief delay before pulling the next hardware frame
+                    // Controlled delay interval (30ms = ~30 FPS)
                     await new Promise(r => setTimeout(r, 30)); 
                 }
 
             } catch (err) {
                 console.error(err);
-                statusText.innerText = "Error: " + err.message + ". Make sure USB Debugging is ON.";
+                statusText.innerText = "Error: " + err.message;
             }
         });
     </script>
