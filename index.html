@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Screen Mirror</title>
+    <!-- Include PeerJS library for easy WebRTC connections -->
+    <script src="https://unpkg.com"></script>
+    <style>
+        body {
+            margin: 0;
+            background-color: #111;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #container { text-align: center; max-width: 90%; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover { background-color: #0056b3; }
+        video {
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
+            display: none;
+            background: black;
+        }
+        .status { margin: 15px; font-size: 14px; color: #aaa; }
+        input {
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #222;
+            color: white;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <h1>📱 Screen Mirror</h1>
+        <p class="status" id="status-text">Connecting to signaling server...</p>
+        
+        <!-- Broadcaster UI (Phone) -->
+        <div id="broadcast-ui" style="display:none;">
+            <p>Your Mirror ID is:</p>
+            <h2 id="my-id" style="color: #28a745;">...</h2>
+            <button id="start-btn">Start Mirroring Screen</button>
+        </div>
+
+        <!-- Viewer UI (PC) -->
+        <div id="view-ui" style="display:none;">
+            <p>Enter the Phone's Mirror ID:</p>
+            <input type="text" id="peer-id-input" placeholder="e.g. 123-456"><br>
+            <button id="connect-btn">Watch Mirror</button>
+        </div>
+        
+        <br>
+        <button id="mode-broadcast">I want to Stream my Phone</button>
+        <button id="mode-view">I want to Watch on this Device</button>
+    </div>
+
+    <!-- Fullscreen Video Element -->
+    <video id="remote-video" autoplay playsinline controls></video>
+
+    <script>
+        let peer;
+        let localStream;
+        const statusText = document.getElementById('status-text');
+        const container = document.getElementById('container');
+        const remoteVideo = document.getElementById('remote-video');
+
+        // Step 1: Initialize PeerJS connection
+        function initPeer(callback) {
+            peer = new Peer({
+                debug: 2
+            });
+
+            peer.on('open', (id) => {
+                statusText.innerText = "Connected to server.";
+                callback(id);
+            });
+
+            peer.on('error', (err) => {
+                console.error(err);
+                statusText.innerText = "Connection error: " + err.type;
+            });
+        }
+
+        // --- BROADCASTER CODE (Phone) ---
+        document.getElementById('mode-broadcast').addEventListener('click', () => {
+            document.getElementById('mode-broadcast').style.display = 'none';
+            document.getElementById('mode-view').style.display = 'none';
+            
+            initPeer((id) => {
+                document.getElementById('my-id').innerText = id;
+                document.getElementById('broadcast-ui').style.display = 'block';
+            });
+
+            // Handle incoming calls automatically if the viewer connects
+            peer.on('call', (call) => {
+                if (localStream) {
+                    call.answer(localStream);
+                    statusText.innerText = "Streaming screen to viewer...";
+                } else {
+                    statusText.innerText = "Viewer tried to connect, but you haven't shared your screen yet.";
+                }
+            });
+        });
+
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            try {
+                // Request screen capture from the device
+                localStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: "always" },
+                    audio: false
+                });
+                statusText.innerText = "Screen captured! Waiting for viewer to connect...";
+                document.getElementById('start-btn').innerText = "Streaming Active";
+                document.getElementById('start-btn').style.backgroundColor = "#28a745";
+            } catch (err) {
+                console.error(err);
+                statusText.innerText = "Failed to capture screen: " + err.message;
+            }
+        });
+
+        // --- VIEWER CODE (PC) ---
+        document.getElementById('mode-view').addEventListener('click', () => {
+            document.getElementById('mode-broadcast').style.display = 'none';
+            document.getElementById('mode-view').style.display = 'none';
+            
+            initPeer(() => {
+                document.getElementById('view-ui').style.display = 'block';
+            });
+        });
+
+        document.getElementById('connect-btn').addEventListener('click', () => {
+            const phoneId = document.getElementById('peer-id-input').value.trim();
+            if (!phoneId) return alert("Please enter a valid ID");
+
+            statusText.innerText = "Connecting to phone...";
+            
+            // Initiate a dummy call to trigger the media exchange
+            // Note: In WebRTC, one side must send a stream. If the viewer is receiving, 
+            // we pass an empty media stream constraint or rely on the host answering.
+            const call = peer.call(phoneId, new MediaStream());
+            
+            call.on('stream', (remoteStream) => {
+                statusText.style.display = 'none';
+                container.style.display = 'none';
+                remoteVideo.style.display = 'block';
+                remoteVideo.srcObject = remoteStream;
+            });
+        });
+    </script>
+</body>
+</html>
