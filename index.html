@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>USB Screen Mirror</title>
-    <!-- Using the stable production package layout -->
-    <script src="https://jsdelivr.net"></script>
+    <!-- Fully compiled minified build distribution library -->
+    <script src="https://cdn.jsdelivr.net/npm/webadb@1.0.1/webadb.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -59,33 +59,36 @@
         const canvas = document.getElementById('mirror-canvas');
         const ctx = canvas.getContext('2d');
         let streaming = false;
+        let webusb;
+        let adb;
 
         connectBtn.addEventListener('click', async () => {
             if (streaming) return;
 
+            // Failsafe validator mapping for compilation architecture
             if (typeof window.Adb === 'undefined') {
-                statusText.innerText = "Error: Library script failed to initialize. Reload the page.";
+                statusText.innerText = "Error: System engine failure. Make sure you are using Chrome or Edge.";
                 return;
             }
 
             try {
-                statusText.innerText = "Status: Initializing WebUSB Instance...";
+                statusText.innerText = "Status: Spawning WebUSB Interface Connection...";
                 
-                // FIXED: Instantiating WebUSB via the native class constructor setup
-                let webusb = new window.Adb.WebUSB();
-                let adb = new window.Adb(webusb);
+                // Open native WebUSB controller mapping
+                webusb = await window.Adb.open("WebUSB");
                 
-                statusText.innerText = "Status: Please select your device in the browser window popup...";
-                await adb.connect();
+                statusText.innerText = "Status: Authenticating ADB Host Connection...";
+                // Connect with parameters required by WebUSB protocol
+                adb = await webusb.connectAdb("host::");
 
-                statusText.innerText = "Status: Mirroring active! Accept prompts on your phone.";
+                statusText.innerText = "Status: Mirroring active! Check your phone for authorization.";
                 canvas.style.display = 'block';
                 streaming = true;
                 connectBtn.style.display = 'none';
 
-                // Hardware level loop pulling screen buffer frames
+                // Hardware level extraction routine loop
                 while (streaming) {
-                    let shell = await adb.shell('screencap -p');
+                    let shell = await adb.shell("screencap -p");
                     let output = await shell.receive();
                     
                     if (output && output.data) {
@@ -98,13 +101,13 @@
                         bitmap.close(); 
                     }
                     
-                    // Controlled delay (50ms interval provides smooth rendering)
-                    await new Promise(r => setTimeout(r, 50)); 
+                    // Throttled refresh layout to prevent phone hardware exhaustion
+                    await new Promise(r => setTimeout(r, 60)); 
                 }
 
             } catch (err) {
                 console.error(err);
-                statusText.innerText = "Error: " + err.message + ". Check your connection.";
+                statusText.innerText = "Error: " + err.message + ". Check connection and close native ADB apps.";
             }
         });
     </script>
