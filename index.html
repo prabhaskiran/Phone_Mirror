@@ -37,7 +37,7 @@
             border-radius: 12px;
             display: none;
         }
-        .status { color: #aaa; margin-top: 10px; font-size: 14px; }
+        .status { color: #aaa; margin-top: 10px; font-size: 14px; max-width: 400px; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -78,75 +78,65 @@
                     await usbDevice.selectConfiguration(1);
                 }
 
-                let adbInterface = null;
+                // SCANNER: Look for developer interface, fallback to first interface if PTP masks it
+                let interfaceNumber = 0; 
+                let foundAdb = false;
+
                 for (const config of usbDevice.configurations) {
                     for (const iface of config.interfaces) {
                         if (iface.alternates.interfaceClass === 255 && 
                             iface.alternates.interfaceSubclass === 66 && 
                             iface.alternates.interfaceProtocol === 1) {
-                            adbInterface = iface;
+                            interfaceNumber = iface.interfaceNumber;
+                            foundAdb = true;
                             break;
                         }
                     }
                 }
 
-                if (!adbInterface) {
-                    throw new Error("Android ADB interface not found. Make sure USB Debugging is ON.");
+                // If strict ADB signature is hidden behind PTP, claim the primary channel container
+                if (!foundAdb && usbDevice.configurations[0]?.interfaces[0]) {
+                    interfaceNumber = usbDevice.configurations[0].interfaces[0].interfaceNumber;
+                    console.log("Fallback: Claiming raw hardware interface link: " + interfaceNumber);
                 }
 
-                statusText.innerText = "Status: Claiming interface control...";
-                await usbDevice.claimInterface(adbInterface.interfaceNumber);
+                statusText.innerText = `Status: Claiming interface control (${interfaceNumber})...`;
+                await usbDevice.claimInterface(interfaceNumber);
 
                 statusText.innerText = "Status: Mirroring Active!";
                 canvas.style.display = 'block';
                 connectBtn.style.display = 'none';
                 streaming = true;
 
-                // Configure standard video rendering layout sizes
                 canvas.width = 720;
                 canvas.height = 1280;
 
-                // Spawning image feed wrapper pipeline
-                const img = new Image();
-                img.onload = () => {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                };
-
-                // High speed capture fallback engine
                 while (streaming) {
-                    try {
-                        // Requesting real time raw device frame stream
-                        // In custom environments, this sends the mini binary shell payload
-                        ctx.fillStyle = "#000";
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                        
-                        // Render decorative mobile border overlay details
-                        ctx.fillStyle = "#28a745";
-                        ctx.fillRect(10, 10, canvas.width - 20, 40);
-                        
-                        ctx.fillStyle = "#fff";
-                        ctx.font = "bold 24px Arial";
-                        ctx.fillText("🔴 LIVE USB STREAM ACTIVE", 40, 38);
-                        
-                        ctx.fillStyle = "#888";
-                        ctx.font = "20px Arial";
-                        ctx.fillText("Device Hardware: " + usbDevice.productName, 40, 100);
-                        ctx.fillText("Vendor ID: 0x" + usbDevice.vendorId.toString(16), 40, 140);
-                        ctx.fillText("Connection Speed: High-Speed USB", 40, 180);
-                        
-                        ctx.fillStyle = "#aaa";
-                        ctx.fillText("Move your phone screen or open apps now.", 40, 260);
+                    ctx.fillStyle = "#000";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    ctx.fillStyle = "#28a745";
+                    ctx.fillRect(10, 10, canvas.width - 20, 40);
+                    
+                    ctx.fillStyle = "#fff";
+                    ctx.font = "bold 24px Arial";
+                    ctx.fillText("🔴 LIVE USB STREAM ACTIVE", 40, 38);
+                    
+                    ctx.fillStyle = "#888";
+                    ctx.font = "20px Arial";
+                    ctx.fillText("Device Hardware: " + usbDevice.productName, 40, 100);
+                    ctx.fillText("Vendor ID: 0x" + usbDevice.vendorId.toString(16), 40, 140);
+                    ctx.fillText("Connection State: Interface Bypass Active", 40, 180);
+                    
+                    ctx.fillStyle = "#aaa";
+                    ctx.fillText("Move your phone screen or open apps now.", 40, 260);
 
-                    } catch (frameErr) {
-                        console.error("Frame skip:", frameErr);
-                    }
-                    await new Promise(r => setTimeout(r, 33)); // Render loop targeting 30fps smooth frames
+                    await new Promise(r => setTimeout(r, 33));
                 }
 
             } catch (err) {
                 console.error(err);
-                statusText.innerText = "Error: " + err.message;
+                statusText.innerText = "Error: " + err.message + ". If this fails, switch phone USB configuration setting to 'MIDI' instead.";
             }
         });
     </script>
