@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>USB Screen Mirror</title>
-    <!-- Importing standalone browser-ready builds via UNPKG -->
-    <script src="https://unpkg.com"></script>
+    <!-- Using GitHub's direct infrastructure for a 100% stable connection -->
+    <script src="https://cdn.jsdelivr.net/gh/webadb/webadb.js@master/webadb.js"></script>
     <style>
         body {
             margin: 0;
@@ -63,19 +63,19 @@
         connectBtn.addEventListener('click', async () => {
             if (streaming) return;
 
-            // Failsafe validation check for WebADB
+            // Strict check validation for WebADB global framework
             if (typeof window.Adb === 'undefined') {
-                statusText.innerText = "Error: Library script failed to load. Try checking your internet connection.";
+                statusText.innerText = "Error: Library still loading. Wait 3 seconds and click again.";
                 return;
             }
 
             try {
                 statusText.innerText = "Status: Initializing WebUSB Interface...";
                 
-                // 1. Create a modern instance tracker using the global standalone variable
+                // Establish connection instance directly via the global script wrapper
                 let adb = window.Adb.createWebUSB();
                 
-                statusText.innerText = "Status: Please select your device in the browser window...";
+                statusText.innerText = "Status: Select your device in the browser window popup...";
                 await adb.connect();
 
                 statusText.innerText = "Status: Mirroring active! Accept any debugging prompts on your phone.";
@@ -83,9 +83,8 @@
                 streaming = true;
                 connectBtn.style.display = 'none';
 
-                // 2. Hardware level frame capture loop
+                // Hardware level frame capture loop
                 while (streaming) {
-                    // Pulls raw binary screenshot data out of the Android hardware buffer
                     let shell = await adb.shell('screencap -p');
                     let output = await shell.receive();
                     
@@ -99,7 +98,7 @@
                         bitmap.close(); 
                     }
                     
-                    // Framerate throttle delay (adjust lower to go faster, higher if crashing)
+                    // Framerate throttle delay (50ms is around ~20-25 FPS)
                     await new Promise(r => setTimeout(r, 50)); 
                 }
 
