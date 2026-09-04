@@ -4,15 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>USB Screen Mirror</title>
-    <!-- Importing modern ES modules for the ADB interface -->
-    <script type="module">
-        import { Adb } from 'https://jsdelivr.net';
-        import { AdbWebUsbBackend } from 'https://jsdelivr.net';
-        
-        // Attach them directly to the window so our main button logic can see them
-        window.Adb = Adb;
-        window.AdbWebUsbBackend = AdbWebUsbBackend;
-    </script>
+    <!-- Importing standalone browser-ready builds via UNPKG -->
+    <script src="https://unpkg.com"></script>
     <style>
         body {
             margin: 0;
@@ -70,60 +63,49 @@
         connectBtn.addEventListener('click', async () => {
             if (streaming) return;
 
-            // Simple fail-safe to let modules finish loading
-            if (!window.AdbWebUsbBackend || !window.Adb) {
-                statusText.innerText = "Status: Initializing scripts... Click again in 2 seconds.";
+            // Failsafe validation check for WebADB
+            if (typeof window.Adb === 'undefined') {
+                statusText.innerText = "Error: Library script failed to load. Try checking your internet connection.";
                 return;
             }
 
             try {
-                statusText.innerText = "Status: Requesting USB device access...";
+                statusText.innerText = "Status: Initializing WebUSB Interface...";
                 
-                // 1. Prompt browser to request the USB device interface
-                const device = await window.AdbWebUsbBackend.requestDevice();
-                if (!device) {
-                    statusText.innerText = "Status: No device selected.";
-                    return;
-                }
+                // 1. Create a modern instance tracker using the global standalone variable
+                let adb = window.Adb.createWebUSB();
+                
+                statusText.innerText = "Status: Please select your device in the browser window...";
+                await adb.connect();
 
-                statusText.innerText = "Status: Authenticating ADB key protocol...";
-                const backend = new window.AdbWebUsbBackend(device);
-                const adb = await window.Adb.authenticate(backend, {
-                    generateKeyPair: () => window.Adb.generateKeyPair()
-                });
-
-                statusText.innerText = "Status: Mirroring active! Accept prompts on your phone.";
+                statusText.innerText = "Status: Mirroring active! Accept any debugging prompts on your phone.";
                 canvas.style.display = 'block';
                 streaming = true;
                 connectBtn.style.display = 'none';
 
-                // 2. Continual screenshot frame extraction loop
+                // 2. Hardware level frame capture loop
                 while (streaming) {
-                    const output = await adb.subprocess.spawn('exec-out screencap -p');
-                    let chunks = [];
-                    const reader = output.stdout.getReader();
+                    // Pulls raw binary screenshot data out of the Android hardware buffer
+                    let shell = await adb.shell('screencap -p');
+                    let output = await shell.receive();
                     
-                    while (true) {
-                        const { value, done } = await reader.read();
-                        if (value) chunks.push(value);
-                        if (done) break;
+                    if (output && output.data) {
+                        const blob = new Blob([output.data], { type: 'image/png' });
+                        const bitmap = await createImageBitmap(blob);
+                        
+                        canvas.width = bitmap.width;
+                        canvas.height = bitmap.height;
+                        ctx.drawImage(bitmap, 0, 0);
+                        bitmap.close(); 
                     }
-
-                    const blob = new Blob(chunks, { type: 'image/png' });
-                    const bitmap = await createImageBitmap(blob);
                     
-                    canvas.width = bitmap.width;
-                    canvas.height = bitmap.height;
-                    ctx.drawImage(bitmap, 0, 0);
-                    bitmap.close(); 
-                    
-                    // Controlled delay interval (30ms = ~30 FPS)
-                    await new Promise(r => setTimeout(r, 30)); 
+                    // Framerate throttle delay (adjust lower to go faster, higher if crashing)
+                    await new Promise(r => setTimeout(r, 50)); 
                 }
 
             } catch (err) {
                 console.error(err);
-                statusText.innerText = "Error: " + err.message;
+                statusText.innerText = "Error: " + err.message + ". Check your cable connection.";
             }
         });
     </script>
