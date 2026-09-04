@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>USB Screen Mirror</title>
-    <!-- Using GitHub's direct infrastructure for a 100% stable connection -->
-    <script src="https://cdn.jsdelivr.net/gh/webadb/webadb.js@master/webadb.js"></script>
+    <!-- Using the stable production package layout -->
+    <script src="https://jsdelivr.net"></script>
     <style>
         body {
             margin: 0;
@@ -63,27 +63,27 @@
         connectBtn.addEventListener('click', async () => {
             if (streaming) return;
 
-            // Strict check validation for WebADB global framework
             if (typeof window.Adb === 'undefined') {
-                statusText.innerText = "Error: Library still loading. Wait 3 seconds and click again.";
+                statusText.innerText = "Error: Library script failed to initialize. Reload the page.";
                 return;
             }
 
             try {
-                statusText.innerText = "Status: Initializing WebUSB Interface...";
+                statusText.innerText = "Status: Initializing WebUSB Instance...";
                 
-                // Establish connection instance directly via the global script wrapper
-                let adb = window.Adb.createWebUSB();
+                // FIXED: Instantiating WebUSB via the native class constructor setup
+                let webusb = new window.Adb.WebUSB();
+                let adb = new window.Adb(webusb);
                 
-                statusText.innerText = "Status: Select your device in the browser window popup...";
+                statusText.innerText = "Status: Please select your device in the browser window popup...";
                 await adb.connect();
 
-                statusText.innerText = "Status: Mirroring active! Accept any debugging prompts on your phone.";
+                statusText.innerText = "Status: Mirroring active! Accept prompts on your phone.";
                 canvas.style.display = 'block';
                 streaming = true;
                 connectBtn.style.display = 'none';
 
-                // Hardware level frame capture loop
+                // Hardware level loop pulling screen buffer frames
                 while (streaming) {
                     let shell = await adb.shell('screencap -p');
                     let output = await shell.receive();
@@ -98,13 +98,13 @@
                         bitmap.close(); 
                     }
                     
-                    // Framerate throttle delay (50ms is around ~20-25 FPS)
+                    // Controlled delay (50ms interval provides smooth rendering)
                     await new Promise(r => setTimeout(r, 50)); 
                 }
 
             } catch (err) {
                 console.error(err);
-                statusText.innerText = "Error: " + err.message + ". Check your cable connection.";
+                statusText.innerText = "Error: " + err.message + ". Check your connection.";
             }
         });
     </script>
